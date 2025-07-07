@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { HttpAgent, Actor } from "@dfinity/agent";
 import { AuthClient } from "@dfinity/auth-client";
+import { HttpAgent, Actor } from "@dfinity/agent";
 import { idlFactory as backendIDL, canisterId as backendId } from "../../declarations/testm_backend";
-import { motion } from "framer-motion";
 import { Toaster, toast } from "react-hot-toast";
 import "./index.scss";
 
@@ -13,9 +12,6 @@ const App = () => {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [profileName, setProfileName] = useState("");
-  const [profileRoll, setProfileRoll] = useState("");
-
   const [courses, setCourses] = useState([]);
   const [voteRequests, setVoteRequests] = useState([]);
 
@@ -24,214 +20,172 @@ const App = () => {
   const [proposedCourseId, setProposedCourseId] = useState("");
 
   useEffect(() => {
-    const initAuth = async () => {
-      const client = await AuthClient.create();
-      setAuthClient(client);
+    const init = async () => {
+      try {
+        const client = await AuthClient.create();
+        setAuthClient(client);
 
-      if (client.isAuthenticated()) {
-        const id = client.getIdentity();
-        setIdentity(id);
-        await initActor(id);
+        if (await client.isAuthenticated()) {
+          const id = client.getIdentity();
+          setIdentity(id);
+          await initActor(id);
+        }
+      } catch (err) {
+        console.error("Auth init error:", err);
+        toast.error("⚠️ Failed to init AuthClient");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
-
-    initAuth();
+    init();
   }, []);
 
   const initActor = async (id) => {
-    const agent = new HttpAgent({ identity: id });
-
-    if (window.location.hostname === "localhost") {
-      try {
-        await agent.fetchRootKey();
-        console.info("✅ Fetched root key (local dev)");
-      } catch (err) {
-        console.error("⚠️ Failed to fetch root key. Is replica running?");
-        toast.error("⚠️ Local replica not running?");
-      }
-    }
-
-    const actorInstance = Actor.createActor(backendIDL, {
-      agent,
-      canisterId: backendId,
-    });
-    setActor(actorInstance);
-
     try {
-      await fetchInitialData(actorInstance);
+      const agent = new HttpAgent({ identity: id });
+
+      // ✅ Must fetch root key in local dev to trust certificates
+      if (process.env.DFX_NETWORK === "local" || window.location.hostname === "localhost") {
+        await agent.fetchRootKey();
+        console.log("Fetched root key for local dev ✅");
+      }
+
+      const act = Actor.createActor(backendIDL, { agent, canisterId: backendId });
+      setActor(act);
+      await fetchData(act);
     } catch (err) {
-      console.error(err);
-      toast.error("⚠️ Could not fetch backend data.");
+      console.error("Actor init failed:", err);
+      toast.error("⚠️ Backend connection failed");
     }
   };
 
-  const fetchInitialData = async (actorInstance) => {
-    const courses = await actorInstance.get_courses();
-    const votes = await actorInstance.get_vote_requests();
-    setCourses(courses);
-    setVoteRequests(votes);
+  const fetchData = async (act) => {
+    try {
+      const c = await act.get_courses();
+      const v = await act.get_vote_requests();
+      setCourses(c);
+      setVoteRequests(v);
+    } catch (err) {
+      console.error("Fetch failed:", err);
+      toast.error("⚠️ Could not fetch data");
+    }
   };
 
   const login = async (selectedRole) => {
-    setRole(selectedRole);
-    await authClient.login({
-      identityProvider: `https://identity.ic0.app`,
-      onSuccess: async () => {
-        const id = authClient.getIdentity();
-        setIdentity(id);
-        await initActor(id);
-      },
-    });
+    try {
+      setRole(selectedRole);
+      await authClient.login({
+        identityProvider: "https://identity.ic0.app",
+        onSuccess: async () => {
+          const id = await authClient.getIdentity();
+          setIdentity(id);
+          await initActor(id);
+        }
+      });
+    } catch (err) {
+      console.error("Login failed:", err);
+      toast.error("⚠️ Login failed");
+    }
   };
 
   const logout = async () => {
-    await authClient.logout();
-    setIdentity(null);
-    setActor(null);
-    setRole(null);
-    setCourses([]);
-    setVoteRequests([]);
-    toast.success("✅ Logged out");
-  };
-
-  const saveProfile = () => {
-    toast.success("✅ Profile saved (local only)");
-  };
-
-  const createCourse = async () => {
-    if (!newCourseTitle || !newCourseDescription) {
-      toast.error("Please fill in all fields");
-      return;
+    try {
+      await authClient.logout();
+      setIdentity(null);
+      setActor(null);
+      setCourses([]);
+      setVoteRequests([]);
+      setRole(null);
+      toast.success("✅ Logged out");
+    } catch (err) {
+      console.error("Logout failed:", err);
+      toast.error("⚠️ Logout failed");
     }
-    await actor.create_course(newCourseTitle, newCourseDescription);
-    toast.success("✅ Course created");
-    setNewCourseTitle("");
-    setNewCourseDescription("");
-    fetchInitialData(actor);
   };
 
-  const createVoteRequest = async () => {
-    if (!proposedCourseId) {
-      toast.error("Enter course ID");
-      return;
-    }
-    await actor.create_vote_request(Number(proposedCourseId));
-    toast.success("✅ Vote request created");
-    setProposedCourseId("");
-    fetchInitialData(actor);
-  };
-
-  const voteOnCourse = async (voteId) => {
-    await actor.vote_up(voteId);
-    toast.success("✅ Voted 👍");
-    fetchInitialData(actor);
-  };
-
-  const declineVoteRequest = async (voteId) => {
-    await actor.vote_down(voteId);
-    toast.success("✅ Voted 👎");
-    fetchInitialData(actor);
-  };
-
-  const Panel = ({ children }) => (
-    <motion.div
-      className="panel"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-    >
-      {children}
-    </motion.div>
-  );
-
-  if (loading) {
-    return (
-      <div className="app">
-        <Toaster position="top-right" />
-        <h2>Loading…</h2>
-      </div>
-    );
-  }
+  if (loading) return <div className="app"><Toaster /><h2>Loading...</h2></div>;
 
   return (
     <div className="app">
-      <Toaster position="top-right" />
-      <motion.h1 initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        EduChain DAO
-      </motion.h1>
+      <Toaster />
+      <h1>EduChain DAO</h1>
 
       {!identity ? (
         <>
-          <h2>Select Role to Login</h2>
-          <motion.button onClick={() => login("student")} className="login-btn">
-            Login as Student
-          </motion.button>
-          <motion.button onClick={() => login("admin")} className="login-btn">
-            Login as Admin
-          </motion.button>
+          <h2>Login</h2>
+          <button onClick={() => login("student")}>Login as Student</button>
+          <button onClick={() => login("admin")}>Login as Admin</button>
         </>
       ) : (
         <>
-          <motion.button onClick={logout} className="logout-btn">
-            Logout
-          </motion.button>
+          <button onClick={logout}>Logout</button>
 
-          {role === "student" && (
+          {role === "admin" && (
             <>
-              <Panel>
-                <h2>Profile</h2>
-                <input type="text" placeholder="Name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-                <input type="text" placeholder="Roll No." value={profileRoll} onChange={(e) => setProfileRoll(e.target.value)} />
-                <button onClick={saveProfile}>Save Profile</button>
-              </Panel>
+              <h3>Create Course</h3>
+              <input value={newCourseTitle} onChange={(e) => setNewCourseTitle(e.target.value)} placeholder="Title" />
+              <input value={newCourseDescription} onChange={(e) => setNewCourseDescription(e.target.value)} placeholder="Description" />
+              <button onClick={async () => {
+                try {
+                  await actor.create_course(newCourseTitle, newCourseDescription);
+                  toast.success("✅ Course created");
+                  setNewCourseTitle("");
+                  setNewCourseDescription("");
+                  fetchData(actor);
+                } catch (err) {
+                  console.error("Create course failed:", err);
+                  toast.error("⚠️ Failed to create course");
+                }
+              }}>Create</button>
 
-              <Panel>
-                <h2>Student Dashboard</h2>
-
-                <h3>Available Courses</h3>
-                <ul>
-                  {courses.map((c) => (
-                    <li key={c.id}><strong>{c.title}</strong> — {c.description}</li>
-                  ))}
-                </ul>
-
-                <h3>Propose a Vote</h3>
-                <input type="text" placeholder="Enter Course ID" value={proposedCourseId} onChange={(e) => setProposedCourseId(e.target.value)} />
-                <button onClick={createVoteRequest}>Propose Vote</button>
-
-                <h3>Active Votes</h3>
-                <ul>
-                  {voteRequests.map((v) => (
-                    <li key={v.id}>
-                      Course ID: {v.course_id} — 👍 {v.upvotes} 👎 {v.downvotes}
-                      <button onClick={() => voteOnCourse(v.id)}>👍</button>
-                      <button onClick={() => declineVoteRequest(v.id)}>👎</button>
-                    </li>
-                  ))}
-                </ul>
-              </Panel>
+              <h3>Courses</h3>
+              <ul>{courses.map(c => <li key={c.id}>{c.title}: {c.description}</li>)}</ul>
             </>
           )}
 
-          {role === "admin" && (
-            <Panel>
-              <h2>Admin Dashboard</h2>
+          {role === "student" && (
+            <>
+              <h3>Courses</h3>
+              <ul>{courses.map(c => <li key={c.id}>{c.title}: {c.description}</li>)}</ul>
 
-              <h3>Create New Course</h3>
-              <input type="text" placeholder="Title" value={newCourseTitle} onChange={(e) => setNewCourseTitle(e.target.value)} />
-              <input type="text" placeholder="Description" value={newCourseDescription} onChange={(e) => setNewCourseDescription(e.target.value)} />
-              <button onClick={createCourse}>Create Course</button>
+              <h3>Propose Vote</h3>
+              <input value={proposedCourseId} onChange={(e) => setProposedCourseId(e.target.value)} placeholder="Course ID" />
+              <button onClick={async () => {
+                try {
+                  await actor.create_vote_request(Number(proposedCourseId));
+                  toast.success("✅ Vote requested");
+                  setProposedCourseId("");
+                  fetchData(actor);
+                } catch (err) {
+                  console.error("Propose vote failed:", err);
+                  toast.error("⚠️ Failed to propose vote");
+                }
+              }}>Propose</button>
 
-              <h3>Existing Courses</h3>
-              <ul>
-                {courses.map((c) => (
-                  <li key={c.id}><strong>{c.title}</strong> — {c.description}</li>
-                ))}
-              </ul>
-            </Panel>
+              <h3>Active Votes</h3>
+              <ul>{voteRequests.map(v =>
+                <li key={v.id}>
+                  Course {v.course_id}: 👍{v.upvotes} 👎{v.downvotes}
+                  <button onClick={async () => {
+                    try {
+                      await actor.vote_up(v.id);
+                      fetchData(actor);
+                    } catch (err) {
+                      console.error("Vote up failed:", err);
+                      toast.error("⚠️ Failed to vote");
+                    }
+                  }}>👍</button>
+                  <button onClick={async () => {
+                    try {
+                      await actor.vote_down(v.id);
+                      fetchData(actor);
+                    } catch (err) {
+                      console.error("Vote down failed:", err);
+                      toast.error("⚠️ Failed to vote");
+                    }
+                  }}>👎</button>
+                </li>)}</ul>
+            </>
           )}
         </>
       )}
