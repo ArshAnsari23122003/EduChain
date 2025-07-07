@@ -1,5 +1,6 @@
 use ic_cdk::{update, query};
 use std::cell::RefCell;
+use candid::{CandidType, Deserialize};
 
 thread_local! {
     static COURSES: RefCell<Vec<Course>> = RefCell::new(Vec::new());
@@ -7,14 +8,14 @@ thread_local! {
     static ENROLLMENTS: RefCell<Vec<Enrollment>> = RefCell::new(Vec::new());
 }
 
-#[derive(Clone, Debug, candid::CandidType, candid::Deserialize)]
+#[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct Course {
     pub id: u64,
     pub title: String,
     pub description: String,
 }
 
-#[derive(Clone, Debug, candid::CandidType, candid::Deserialize)]
+#[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct VoteRequest {
     pub id: u64,
     pub course_id: u64,
@@ -22,13 +23,12 @@ pub struct VoteRequest {
     pub downvotes: u32,
 }
 
-#[derive(Clone, Debug, candid::CandidType, candid::Deserialize)]
+#[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct Enrollment {
     pub student_principal: String,
     pub course_id: u64,
 }
 
-/// Create a new course
 #[update]
 fn create_course(title: String, description: String) {
     let course = Course {
@@ -39,13 +39,11 @@ fn create_course(title: String, description: String) {
     COURSES.with(|courses| courses.borrow_mut().push(course));
 }
 
-/// Get all courses
 #[query]
 fn get_courses() -> Vec<Course> {
     COURSES.with(|courses| courses.borrow().clone())
 }
 
-/// Create a new vote request for a course
 #[update]
 fn create_vote_request(course_id: u64) {
     let vote = VoteRequest {
@@ -57,13 +55,11 @@ fn create_vote_request(course_id: u64) {
     VOTE_REQUESTS.with(|votes| votes.borrow_mut().push(vote));
 }
 
-/// Get all vote requests
 #[query]
 fn get_vote_requests() -> Vec<VoteRequest> {
     VOTE_REQUESTS.with(|votes| votes.borrow().clone())
 }
 
-/// Upvote a vote request
 #[update]
 fn vote_up(vote_id: u64) {
     VOTE_REQUESTS.with(|votes| {
@@ -73,7 +69,6 @@ fn vote_up(vote_id: u64) {
     });
 }
 
-/// Downvote a vote request
 #[update]
 fn vote_down(vote_id: u64) {
     VOTE_REQUESTS.with(|votes| {
@@ -83,7 +78,6 @@ fn vote_down(vote_id: u64) {
     });
 }
 
-/// Decline (remove) a vote request
 #[update]
 fn decline_vote_request(vote_id: u64) {
     VOTE_REQUESTS.with(|votes| {
@@ -91,7 +85,6 @@ fn decline_vote_request(vote_id: u64) {
     });
 }
 
-/// Enroll a student in a course
 #[update]
 fn enroll_student(student_principal: String, course_id: u64) {
     let enrollment = Enrollment {
@@ -101,7 +94,6 @@ fn enroll_student(student_principal: String, course_id: u64) {
     ENROLLMENTS.with(|enrollments| enrollments.borrow_mut().push(enrollment));
 }
 
-/// Dropout a student from a course
 #[update]
 fn dropout_student(student_principal: String, course_id: u64) {
     ENROLLMENTS.with(|enrollments| {
@@ -111,13 +103,11 @@ fn dropout_student(student_principal: String, course_id: u64) {
     });
 }
 
-/// Get all enrollments
 #[query]
 fn get_enrollments() -> Vec<Enrollment> {
     ENROLLMENTS.with(|enrollments| enrollments.borrow().clone())
 }
 
-/// Get enrollments for a specific student
 #[query]
 fn get_enrollments_by_student(student_principal: String) -> Vec<Enrollment> {
     ENROLLMENTS.with(|enrollments| {
