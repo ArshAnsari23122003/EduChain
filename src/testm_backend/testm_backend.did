@@ -1,18 +1,13 @@
 service : {
-    // 📚 Courses
-    "create_course": (text, text) -> ();
-    "get_courses": () -> (vec record { nat64; text; text; }) query;
-
-    // 🗳️ Votes
-    "create_vote_request": (nat64) -> ();
-    "get_vote_requests": () -> (vec record { nat64; nat64; nat32; nat32; }) query;
-    "vote_up": (nat64) -> ();
-    "vote_down": (nat64) -> ();
-    "decline_vote_request": (nat64) -> ();
-
-    // 👩‍🎓 Enrollments
-    "enroll_student": (text, nat64) -> ();
-    "dropout_student": (text, nat64) -> ();
-    "get_enrollments": () -> (vec record { text; nat64; }) query;
-    "get_enrollments_by_student": (text) -> (vec record { text; nat64; }) query;
+  "create_course": (text, text) -> ();
+  "get_courses": () -> (vec record { id: nat64; title: text; description: text });
+  "create_vote_request": (nat64) -> ();
+  "get_vote_requests": () -> (vec record { id: nat64; course_id: nat64; upvotes: nat32; downvotes: nat32 });
+  "vote_up": (nat64) -> ();
+  "vote_down": (nat64) -> ();
+  "decline_vote_request": (nat64) -> ();
+  "enroll_student": (text, nat64) -> ();
+  "dropout_student": (text, nat64) -> ();
+  "get_enrollments": () -> (vec record { student_principal: text; course_id: nat64 });
+  "get_enrollments_by_student": (text) -> (vec record { student_principal: text; course_id: nat64 });
 }
